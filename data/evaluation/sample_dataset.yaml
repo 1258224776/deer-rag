@@ -1,0 +1,9 @@
+collection_id: "<collection-id>"
+cases:
+  - query: "what is the core architecture?"
+    gold_chunk_ids:
+      - "<chunk-id-1>"
+      - "<chunk-id-2>"
+  - query: "how does hybrid retrieval work?"
+    gold_chunk_ids:
+      - "<chunk-id-3>"

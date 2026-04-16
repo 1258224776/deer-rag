@@ -1,0 +1,5 @@
+collection_id: "29e15ac1-cbc0-4e5c-8a4a-efc919fdfd98"
+cases:
+  - query: "artifact query"
+    gold_chunk_ids:
+      - "dense-1"

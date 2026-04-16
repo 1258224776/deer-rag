@@ -1,0 +1,9 @@
+query: "artifact query"
+collection_id: "3fdb07e3-4261-4678-ba58-3a70fdfac358"
+strategies:
+  - "dense"
+  - "hybrid"
+top_k: 3
+rerank: true
+save_artifact: true
+artifact_name: "smoke-run"

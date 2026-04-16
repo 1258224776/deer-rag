@@ -1,0 +1,14 @@
+query: "hello"
+collection_id: "<collection-id>"
+strategies:
+  - "dense"
+  - "bm25"
+  - "hybrid"
+top_k: 5
+rerank: true
+save_artifact: true
+artifact_name: "baseline-run"
+budget:
+  total: 4000
+  reserve: 1000
+  per_evidence: 400
