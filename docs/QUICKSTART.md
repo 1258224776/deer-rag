@@ -24,6 +24,22 @@ Default local address:
 http://127.0.0.1:8000
 ```
 
+For local full-stack development on Windows PowerShell, use the helper script from the repo root:
+
+```powershell
+.\dev.ps1 -OpenBrowser
+```
+
+That starts:
+- backend API on `http://127.0.0.1:8010`
+- Next.js UI on `http://localhost:3000/collections`
+
+To stop both:
+
+```powershell
+.\dev-stop.ps1
+```
+
 All `curl` examples below are intentionally written as single-line commands so they paste cleanly in bash, zsh, and PowerShell. On Windows PowerShell, prefer `curl.exe` if `curl` is aliased to `Invoke-WebRequest`.
 
 ## 3. Minimal Workflow

@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+:root {
+  --background: #efe5d4;
+  --background-strong: #f7f2e9;
+  --surface: rgba(255, 250, 242, 0.9);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --ink: #13261f;
+  --muted: #5f6d67;
+  --border: rgba(92, 110, 102, 0.24);
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-soft: rgba(15, 118, 110, 0.12);
+  --ember: #c46b35;
+  --ember-soft: rgba(196, 107, 53, 0.12);
+  --shadow: 0 30px 80px rgba(22, 32, 28, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--ink);
+  font-family:
+    Aptos,
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(196, 107, 53, 0.22), transparent 28%),
+    linear-gradient(180deg, var(--background-strong) 0%, var(--background) 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.22);
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-[28px] border backdrop-blur-md;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .panel-card {
+    @apply rounded-[24px] border;
+    border-color: var(--border);
+    background: var(--surface-strong);
+    box-shadow: 0 18px 40px rgba(18, 38, 31, 0.08);
+  }
+
+  .section-label {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.28em];
+    color: var(--muted);
+  }
+
+  .eyebrow-chip {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium;
+    border-color: var(--border);
+    background: var(--background-strong);
+    color: var(--muted);
+  }
+
+  .field-shell {
+    @apply flex flex-col gap-2;
+  }
+
+  .field-label {
+    @apply text-sm font-semibold;
+    color: var(--ink);
+  }
+
+  .field-hint {
+    @apply text-sm;
+    color: var(--muted);
+  }
+
+  .field-input {
+    @apply min-h-12 rounded-2xl border bg-white/80 px-4 py-3 text-sm outline-none transition duration-200 placeholder:text-[color:var(--muted)] focus:ring-4;
+    border-color: var(--border);
+    color: var(--ink);
+  }
+
+  .field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+
+  .button-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white transition duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60;
+    background: var(--accent);
+  }
+
+  .button-primary:hover {
+    background: var(--accent-strong);
+  }
+
+  .button-primary:focus {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+
+  .button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border bg-white/70 px-5 py-3 text-sm font-semibold transition duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60;
+    border-color: var(--border);
+    color: var(--ink);
+  }
+
+  .button-secondary:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .button-secondary:focus {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+
+  .button-ghost {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition duration-200 hover:bg-black/5;
+    color: var(--muted);
+  }
+
+  .button-ghost:hover {
+    color: var(--ink);
+  }
+
+  .metric-block {
+    @apply rounded-[22px] border bg-white/70 p-4;
+    border-color: var(--border);
+  }
+}

@@ -202,6 +202,8 @@
 - 最小 ingest / index / retrieve 流程
 - smoke tests
 
+如果你是第一次接触这个系统，建议再看一遍面向用户的中文说明书：[docs/USER_MANUAL_zh.md](./docs/USER_MANUAL_zh.md)。
+
 ## 真实 Mini Eval
 
 仓库现在已经自带一组真实中文端到端 mini-eval，配置文件在 [data/evaluation/mini-eval-python-venv-zh.yaml](./data/evaluation/mini-eval-python-venv-zh.yaml)。

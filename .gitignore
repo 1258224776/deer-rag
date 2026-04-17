@@ -6,6 +6,11 @@ pytest-cache-files-*/
 .venv/
 .claude/
 *.egg-info/
+logs/
+*.log
+node_modules/
+.next/
+ui/.env.local
 
 data/raw/
 data/indexes/
