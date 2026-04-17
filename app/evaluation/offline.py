@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from app.core.models import TokenBudget
+from app.core.models import RetrievalOptions, TokenBudget
 from app.evaluation.dataset import EvaluationDataset
 from app.evaluation.metrics import ndcg_at_k
 from app.evaluation.runner import ExperimentRunner
@@ -23,6 +23,7 @@ class OfflineEvaluationRunner:
         budget: TokenBudget | None = None,
         merge_adjacent: bool = True,
         compression_mode: str = "none",
+        options: RetrievalOptions | None = None,
     ) -> dict:
         case_results: list[dict] = []
         aggregates: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -39,6 +40,7 @@ class OfflineEvaluationRunner:
                 merge_adjacent=merge_adjacent,
                 compression_mode=compression_mode,
                 gold_chunk_ids=case.gold_chunk_ids,
+                options=options,
             )
 
             strategy_runs = []

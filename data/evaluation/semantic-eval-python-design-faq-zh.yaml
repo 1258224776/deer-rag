@@ -1,0 +1,56 @@
+collection_id: "semantic-eval-python-design-faq-zh-v1"
+title: "Semantic Eval: Python design FAQ zh-CN"
+description: "A Chinese semantic retrieval slice built from the Python 3.14 zh-CN design FAQ."
+slice: "semantic"
+source:
+  title: "设计和历史常见问题"
+  url: "https://docs.python.org/zh-cn/3.14/faq/design.html"
+  source_type: "web"
+  version: "Python 3.14 zh-CN docs"
+chunking:
+  chunk_size: 220
+  overlap: 40
+evaluation:
+  top_k: 5
+  strategies:
+    - "dense"
+    - "bm25"
+    - "hybrid"
+cases:
+  - id: "indentation-vs-braces"
+    query: "为什么 Python 更依赖缩进而不是大括号来区分代码块？"
+    query_type: "semantic-explanation"
+    expected_winner: "dense"
+    gold_chunk_indexes:
+      - 0
+    gold_contains:
+      - "使用缩进进行分组非常优雅"
+      - "没有开始/结束括号"
+    difficulty: "hard-semantic"
+  - id: "float-rounding-error"
+    query: "为什么十进制小数在程序里经常会出现一点点精度误差？"
+    query_type: "semantic-explanation"
+    expected_winner: "dense"
+    gold_chunk_indexes:
+      - 4
+    gold_contains:
+      - "许多可以轻松地用十进制表示的数字不能用二进制浮点表示"
+    difficulty: "semantic-explanation"
+  - id: "string-immutability"
+    query: "为什么字符串创建之后不能直接在原对象上改内容？"
+    query_type: "semantic-explanation"
+    expected_winner: "dense"
+    gold_chunk_indexes:
+      - 6
+    gold_contains:
+      - "字符串被视为与数字一样\"基本\""
+    difficulty: "hard-semantic"
+  - id: "explicit-self"
+    query: "为什么调用实例方法时要显式写出 self？"
+    query_type: "conceptual-reasoning"
+    expected_winner: "dense"
+    gold_chunk_indexes:
+      - 6
+    gold_contains:
+      - "更明显的显示出，使用的是方法或实例属性而不是局部变量"
+    difficulty: "semantic-explanation"

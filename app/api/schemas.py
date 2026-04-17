@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.core.models import Collection, EvidencePack, SourceDocument, TokenBudget
+from app.core.models import Collection, EvidencePack, RetrievalOptions, SourceDocument, TokenBudget
 
 
 class CollectionCreateRequest(BaseModel):
@@ -42,6 +42,7 @@ class RetrieveRequest(BaseModel):
     strategy: Literal["dense", "bm25", "hybrid"] = "hybrid"
     rerank: bool = False
     candidate_k: int | None = Field(default=None, ge=1)
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
 
 
 class BuildIndexesResponse(BaseModel):
@@ -77,7 +78,7 @@ class ContextAssembleRequest(BaseModel):
     budget: TokenBudget = Field(default_factory=TokenBudget)
     profile: Literal["markdown", "plain", "agent"] = "markdown"
     merge_adjacent: bool = True
-    compression_mode: Literal["none", "extractive"] = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
 
 
 class ContextAssembleResponse(BaseModel):
@@ -96,10 +97,11 @@ class ExperimentRunRequest(BaseModel):
     rerank: bool = False
     budget: TokenBudget = Field(default_factory=TokenBudget)
     merge_adjacent: bool = True
-    compression_mode: Literal["none", "extractive"] = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
     gold_chunk_ids: list[str] = Field(default_factory=list)
     save_artifact: bool = False
     artifact_name: str | None = None
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
 
 
 class ExperimentRunConfigRequest(BaseModel):
@@ -117,8 +119,9 @@ class ChunkSizeCompareRequest(BaseModel):
     rerank: bool = False
     budget: TokenBudget = Field(default_factory=TokenBudget)
     merge_adjacent: bool = True
-    compression_mode: Literal["none", "extractive"] = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
     gold_chunk_ids: list[str] = Field(default_factory=list)
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
 
 
 class ChunkSizeVariantResult(BaseModel):
@@ -159,7 +162,7 @@ class ExperimentCompareStrategySummary(BaseModel):
     token_per_evidence: float
     selected_count: int
     merged_count: int = 0
-    compression_mode: Literal["none", "extractive"] | str = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] | str = "none"
     recall_at_k: float | None = None
     mrr: float | None = None
 
@@ -198,9 +201,10 @@ class ContextEfficiencyExperimentRequest(BaseModel):
     budget: TokenBudget = Field(default_factory=TokenBudget)
     gold_chunk_ids: list[str] = Field(default_factory=list)
     baseline_merge_adjacent: bool = False
-    baseline_compression_mode: Literal["none", "extractive"] = "none"
+    baseline_compression_mode: Literal["none", "extractive", "abstractive"] = "none"
     optimized_merge_adjacent: bool = True
-    optimized_compression_mode: Literal["none", "extractive"] = "extractive"
+    optimized_compression_mode: Literal["none", "extractive", "abstractive"] = "extractive"
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
 
 
 class ContextEfficiencyDelta(BaseModel):
@@ -225,7 +229,8 @@ class EvaluationDatasetRunRequest(BaseModel):
     rerank: bool = False
     budget: TokenBudget = Field(default_factory=TokenBudget)
     merge_adjacent: bool = True
-    compression_mode: Literal["none", "extractive"] = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
 
 
 class EvaluationStrategySummary(BaseModel):
@@ -270,10 +275,12 @@ class StrategyRunResult(BaseModel):
     token_savings: int = 0
     token_per_evidence: float
     merged_count: int = 0
-    compression_mode: Literal["none", "extractive"] | str = "none"
+    compression_mode: Literal["none", "extractive", "abstractive"] | str = "none"
     chunk_ids: list[str]
     result_chunk_ids: list[str] = Field(default_factory=list)
     metrics: StrategyMetrics
+    rewritten_queries: list[str] = Field(default_factory=list)
+    applied_options: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExperimentRunResponse(BaseModel):
@@ -283,3 +290,52 @@ class ExperimentRunResponse(BaseModel):
     overlap: dict[str, float]
     artifact_id: str | None = None
     artifact_path: str | None = None
+
+
+class EmbeddingBenchmarkRequest(BaseModel):
+    dataset_path: str
+    embedding_models: list[str] = Field(min_length=2)
+    strategies: list[Literal["dense", "hybrid"]] = Field(default_factory=lambda: ["dense", "hybrid"])
+    hybrid_rrf_k: int | None = Field(default=None, ge=1)
+    top_k: int = Field(default=8, ge=1)
+    candidate_k: int | None = Field(default=None, ge=1)
+    rerank: bool = False
+    budget: TokenBudget = Field(default_factory=TokenBudget)
+    merge_adjacent: bool = True
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
+
+
+class EmbeddingBenchmarkModelResult(BaseModel):
+    model_name: str
+    summary: list[EvaluationStrategySummary]
+
+
+class EmbeddingBenchmarkResponse(BaseModel):
+    collection_id: str
+    case_count: int
+    hybrid_rrf_k: int
+    models: list[EmbeddingBenchmarkModelResult]
+
+
+class RerankerBenchmarkRequest(BaseModel):
+    dataset_path: str
+    reranker_models: list[str] = Field(min_length=2)
+    strategy: Literal["dense", "bm25", "hybrid"] = "hybrid"
+    top_k: int = Field(default=8, ge=1)
+    candidate_k: int | None = Field(default=None, ge=1)
+    budget: TokenBudget = Field(default_factory=TokenBudget)
+    merge_adjacent: bool = True
+    compression_mode: Literal["none", "extractive", "abstractive"] = "none"
+    options: RetrievalOptions = Field(default_factory=RetrievalOptions)
+
+
+class RerankerBenchmarkModelResult(BaseModel):
+    model_name: str
+    summary: list[EvaluationStrategySummary]
+
+
+class RerankerBenchmarkResponse(BaseModel):
+    collection_id: str
+    case_count: int
+    models: list[RerankerBenchmarkModelResult]

@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Modular RAG and retrieval optimization system focused on hybrid retrieval, token-efficient context assembly, and evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "1258224776" }
+]
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn>=0.30.0",
@@ -31,6 +35,11 @@ dependencies = [
 dev = [
   "pytest>=8.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/1258224776/deer-rag"
+Repository = "https://github.com/1258224776/deer-rag"
+Issues = "https://github.com/1258224776/deer-rag/issues"
 
 [tool.setuptools]
 include-package-data = true

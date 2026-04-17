@@ -6,13 +6,15 @@ from app.context import ContextOptimizer, ContextPacker
 from app.core.config import AppConfig, load_config
 from app.evaluation import (
     ChunkSizeCompareRunner,
+    EmbeddingBenchmarkRunner,
     ExperimentArtifactStore,
     ExperimentRunner,
     OfflineEvaluationRunner,
+    RerankerBenchmarkRunner,
 )
 from app.indexing import CollectionIndexRegistry
 from app.ingestion import IngestionService
-from app.retrieval import BM25Retriever, CrossEncoderReranker, DenseRetriever, HybridRetriever
+from app.retrieval import BM25Retriever, CrossEncoderReranker, DenseRetriever, HybridRetriever, RetrievalPipeline
 from app.storage import SQLiteMetadataStore
 
 
@@ -71,6 +73,19 @@ def get_context_packer() -> ContextPacker:
 
 
 @lru_cache(maxsize=1)
+def get_retrieval_pipeline() -> RetrievalPipeline:
+    return RetrievalPipeline(
+        retrievers={
+            "dense": get_dense_retriever(),
+            "bm25": get_bm25_retriever(),
+            "hybrid": get_hybrid_retriever(),
+        },
+        reranker=get_reranker(),
+        store=get_store(),
+    )
+
+
+@lru_cache(maxsize=1)
 def get_experiment_artifact_store() -> ExperimentArtifactStore:
     config = get_config()
     return ExperimentArtifactStore(config.paths.experiments_dir)
@@ -97,3 +112,18 @@ def get_chunk_size_compare_runner() -> ChunkSizeCompareRunner:
 @lru_cache(maxsize=1)
 def get_offline_evaluation_runner() -> OfflineEvaluationRunner:
     return OfflineEvaluationRunner(get_experiment_runner())
+
+
+@lru_cache(maxsize=1)
+def get_embedding_benchmark_runner() -> EmbeddingBenchmarkRunner:
+    return EmbeddingBenchmarkRunner(get_store())
+
+
+@lru_cache(maxsize=1)
+def get_reranker_benchmark_runner() -> RerankerBenchmarkRunner:
+    return RerankerBenchmarkRunner(
+        dense_retriever=get_dense_retriever(),
+        bm25_retriever=get_bm25_retriever(),
+        hybrid_retriever=get_hybrid_retriever(),
+        store=get_store(),
+    )

@@ -11,7 +11,7 @@ class HybridRetriever(BaseRetriever):
         self,
         dense_retriever: DenseRetriever,
         bm25_retriever: BM25Retriever,
-        rrf_k: int = 60,
+        rrf_k: int = 10,
     ) -> None:
         self.dense_retriever = dense_retriever
         self.bm25_retriever = bm25_retriever

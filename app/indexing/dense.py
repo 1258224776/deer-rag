@@ -11,7 +11,7 @@ from app.core.models import Chunk
 
 
 class FaissDenseIndex:
-    def __init__(self, index_path: str | Path, meta_path: str | Path, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+    def __init__(self, index_path: str | Path, meta_path: str | Path, model_name: str = "BAAI/bge-small-zh-v1.5") -> None:
         self.index_path = Path(index_path)
         self.meta_path = Path(meta_path)
         self.index_path.parent.mkdir(parents=True, exist_ok=True)

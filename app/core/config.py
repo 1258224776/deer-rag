@@ -21,7 +21,7 @@ class PathsConfig(BaseModel):
 
 class RetrievalDefaults(BaseModel):
     top_k: int = 8
-    hybrid_rrf_k: int = 60
+    hybrid_rrf_k: int = 10
     default_budget_total: int = 6000
     default_budget_reserve: int = 1000
     default_budget_per_evidence: int = 600

@@ -4,6 +4,7 @@ from app.core.interfaces import BaseRetriever
 from app.core.models import EvidencePack
 from app.indexing.lexical import BM25LexicalIndex
 from app.indexing.registry import CollectionIndexRegistry
+from app.retrieval.text import tokenize_text
 from app.storage import SQLiteMetadataStore
 
 
@@ -32,7 +33,7 @@ class BM25Retriever(BaseRetriever):
         if bm25 is None or not chunk_ids:
             return []
 
-        query_tokens = query.split()
+        query_tokens = tokenize_text(query)
         scores = bm25.get_scores(query_tokens)
         ranked_pairs = sorted(
             ((chunk_ids[idx], float(score)) for idx, score in enumerate(scores)),
@@ -57,6 +58,11 @@ class BM25Retriever(BaseRetriever):
                     "section_title": record["chunk"].section_title,
                     "document_metadata": record["document"].metadata,
                     "chunk_metadata": record["chunk"].metadata,
+                    "source_type": record["document"].source_type,
+                    "published_at": (
+                        record["document"].published_at.isoformat() if record["document"].published_at is not None else None
+                    ),
+                    "ingested_at": record["document"].ingested_at.isoformat(),
                     "retrieval": "bm25",
                 },
             )

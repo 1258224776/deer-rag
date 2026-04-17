@@ -15,6 +15,7 @@ from app.api.dependencies import (
     get_context_optimizer,
     get_context_packer,
     get_dense_retriever,
+    get_embedding_benchmark_runner,
     get_experiment_artifact_store,
     get_experiment_runner,
     get_hybrid_retriever,
@@ -22,6 +23,8 @@ from app.api.dependencies import (
     get_ingestion_service,
     get_offline_evaluation_runner,
     get_reranker,
+    get_reranker_benchmark_runner,
+    get_retrieval_pipeline,
     get_store,
 )
 from app.api.schemas import (
@@ -36,6 +39,8 @@ from app.api.schemas import (
     ContextEfficiencyDelta,
     ContextAssembleRequest,
     ContextAssembleResponse,
+    EmbeddingBenchmarkRequest,
+    EmbeddingBenchmarkResponse,
     ExperimentCompareRequest,
     ExperimentCompareResponse,
     ExperimentCompareSummary,
@@ -49,6 +54,8 @@ from app.api.schemas import (
     IngestResponse,
     IngestTextRequest,
     IngestWebRequest,
+    RerankerBenchmarkRequest,
+    RerankerBenchmarkResponse,
     RetrieveRequest,
     RetrieveResponse,
 )
@@ -185,6 +192,9 @@ def build_indexes(payload: BuildIndexesRequest) -> BuildIndexesResponse:
     get_dense_retriever.cache_clear()
     get_bm25_retriever.cache_clear()
     get_hybrid_retriever.cache_clear()
+    get_offline_evaluation_runner.cache_clear()
+    get_reranker_benchmark_runner.cache_clear()
+    get_retrieval_pipeline.cache_clear()
     get_experiment_runner.cache_clear()
     return BuildIndexesResponse(**result)
 
@@ -193,28 +203,17 @@ def build_indexes(payload: BuildIndexesRequest) -> BuildIndexesResponse:
 def retrieve(payload: RetrieveRequest) -> RetrieveResponse:
     _ensure_collection_exists(payload.collection_id)
 
-    config = get_config()
-    retriever_map = {
-        "dense": get_dense_retriever(),
-        "bm25": get_bm25_retriever(),
-        "hybrid": get_hybrid_retriever(),
-    }
-    retriever = retriever_map[payload.strategy]
-
     started = perf_counter()
-    fetch_k = payload.candidate_k or payload.top_k or config.retrieval.top_k
-    candidates = retriever.retrieve(
-        payload.query,
-        payload.collection_id,
-        top_k=fetch_k,
+    pipeline_result = get_retrieval_pipeline().run(
+        query=payload.query,
+        collection_id=payload.collection_id,
+        strategy=payload.strategy,
+        top_k=payload.top_k,
+        candidate_k=payload.candidate_k,
+        rerank=payload.rerank,
+        options=payload.options,
     )
-    reranked = False
-    if payload.rerank:
-        results = get_reranker().rerank(payload.query, candidates, top_k=payload.top_k)
-        reranked = True
-    else:
-        results = candidates[: payload.top_k]
-
+    results = pipeline_result.results
     latency_ms = int((perf_counter() - started) * 1000)
     token_estimate = sum(item.token_estimate for item in results)
     run_record = RetrievalRunRecord(
@@ -225,28 +224,32 @@ def retrieve(payload: RetrieveRequest) -> RetrieveResponse:
             "top_k": payload.top_k,
             "candidate_k": payload.candidate_k,
             "rerank": payload.rerank,
+            "options": payload.options.model_dump(),
         },
-        candidate_count=len(candidates),
-        reranked_count=len(results) if reranked else 0,
+        candidate_count=len(pipeline_result.candidates),
+        reranked_count=len(results) if pipeline_result.reranked else 0,
         kept_evidence_count=len(results),
         token_estimate=token_estimate,
         latency_ms=latency_ms,
         evidence_ids=[item.chunk_id for item in results],
         trace_steps=[
-            {"step": "retrieve", "strategy": payload.strategy, "count": len(candidates)},
-            {"step": "rerank", "enabled": reranked, "count": len(results)},
+            *pipeline_result.trace_steps,
+            {"step": "rerank", "enabled": pipeline_result.reranked, "count": len(results)},
         ],
     )
     get_store().log_retrieval_run(run_record)
 
     return RetrieveResponse(
         strategy=payload.strategy,
-        reranked=reranked,
+        reranked=pipeline_result.reranked,
         results=results,
         metrics={
             "latency_ms": latency_ms,
             "result_count": len(results),
             "token_estimate": token_estimate,
+            "rewritten_queries": pipeline_result.rewritten_queries,
+            "applied_options": payload.options.model_dump(),
+            **pipeline_result.diagnostics,
         },
     )
 
@@ -296,6 +299,7 @@ def run_experiment(payload: ExperimentRunRequest) -> ExperimentRunResponse:
         gold_chunk_ids=payload.gold_chunk_ids,
         save_artifact=payload.save_artifact,
         artifact_name=payload.artifact_name,
+        options=payload.options,
     )
     return ExperimentRunResponse(**result)
 
@@ -316,6 +320,7 @@ def run_context_efficiency_experiment(payload: ContextEfficiencyExperimentReques
         merge_adjacent=payload.baseline_merge_adjacent,
         compression_mode=payload.baseline_compression_mode,
         gold_chunk_ids=payload.gold_chunk_ids,
+        options=payload.options,
     )
     optimized = runner.run(
         query=payload.query,
@@ -328,6 +333,7 @@ def run_context_efficiency_experiment(payload: ContextEfficiencyExperimentReques
         merge_adjacent=payload.optimized_merge_adjacent,
         compression_mode=payload.optimized_compression_mode,
         gold_chunk_ids=payload.gold_chunk_ids,
+        options=payload.options,
     )
 
     baseline_by_strategy = {item["strategy"]: item for item in baseline["strategies"]}
@@ -374,6 +380,7 @@ def run_chunk_size_compare(payload: ChunkSizeCompareRequest) -> ChunkSizeCompare
         merge_adjacent=payload.merge_adjacent,
         compression_mode=payload.compression_mode,
         gold_chunk_ids=payload.gold_chunk_ids,
+        options=payload.options,
     )
     return ChunkSizeCompareResponse(**result)
 
@@ -524,5 +531,58 @@ def run_evaluation_dataset(payload: EvaluationDatasetRunRequest) -> EvaluationDa
         budget=payload.budget,
         merge_adjacent=payload.merge_adjacent,
         compression_mode=payload.compression_mode,
+        options=payload.options,
     )
     return EvaluationDatasetRunResponse(**result)
+
+
+@router.post("/experiments/benchmark/embeddings", response_model=EmbeddingBenchmarkResponse)
+def run_embedding_benchmark(payload: EmbeddingBenchmarkRequest) -> EmbeddingBenchmarkResponse:
+    try:
+        dataset = load_evaluation_dataset(
+            payload.dataset_path,
+            allowed_dir=Path(get_config().paths.evaluation_dir),
+        )
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    _ensure_collection_exists(dataset.collection_id)
+    result = get_embedding_benchmark_runner().run_dataset(
+        dataset,
+        embedding_models=list(payload.embedding_models),
+        strategies=list(payload.strategies),
+        hybrid_rrf_k=payload.hybrid_rrf_k,
+        top_k=payload.top_k,
+        candidate_k=payload.candidate_k,
+        rerank=payload.rerank,
+        budget=payload.budget,
+        merge_adjacent=payload.merge_adjacent,
+        compression_mode=payload.compression_mode,
+        options=payload.options,
+    )
+    return EmbeddingBenchmarkResponse(**result)
+
+
+@router.post("/experiments/benchmark/rerankers", response_model=RerankerBenchmarkResponse)
+def run_reranker_benchmark(payload: RerankerBenchmarkRequest) -> RerankerBenchmarkResponse:
+    try:
+        dataset = load_evaluation_dataset(
+            payload.dataset_path,
+            allowed_dir=Path(get_config().paths.evaluation_dir),
+        )
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    _ensure_collection_exists(dataset.collection_id)
+    result = get_reranker_benchmark_runner().run_dataset(
+        dataset,
+        reranker_models=list(payload.reranker_models),
+        strategy=payload.strategy,
+        top_k=payload.top_k,
+        candidate_k=payload.candidate_k,
+        budget=payload.budget,
+        merge_adjacent=payload.merge_adjacent,
+        compression_mode=payload.compression_mode,
+        options=payload.options,
+    )
+    return RerankerBenchmarkResponse(**result)

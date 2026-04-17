@@ -5,9 +5,10 @@ from time import perf_counter
 
 from app.context import ContextOptimizer
 from app.core.interfaces import BaseReranker, BaseRetriever
-from app.core.models import RetrievalRunRecord, TokenBudget
+from app.core.models import RetrievalOptions, RetrievalRunRecord, TokenBudget
 from app.evaluation.artifacts import ExperimentArtifactStore
 from app.evaluation.metrics import jaccard_overlap, mean_reciprocal_rank, recall_at_k
+from app.retrieval import RetrievalPipeline
 from app.storage import SQLiteMetadataStore
 
 
@@ -32,6 +33,11 @@ class ExperimentRunner:
         self.context_optimizer = context_optimizer
         self.store = store
         self.artifact_store = artifact_store
+        self.pipeline = RetrievalPipeline(
+            retrievers=self.retrievers,
+            reranker=self.reranker,
+            store=self.store,
+        )
 
     def run(
         self,
@@ -48,29 +54,34 @@ class ExperimentRunner:
         gold_chunk_ids: list[str] | None = None,
         save_artifact: bool = False,
         artifact_name: str | None = None,
+        options: RetrievalOptions | None = None,
     ) -> dict:
         budget = budget or TokenBudget()
         gold_chunk_ids = gold_chunk_ids or []
         strategies = list(dict.fromkeys(strategies))
+        options = options or RetrievalOptions()
         runs: list[dict] = []
 
         for strategy in strategies:
-            retriever = self.retrievers[strategy]
             started = perf_counter()
-            fetch_k = candidate_k or top_k
-            candidates = retriever.retrieve(query, collection_id, top_k=fetch_k)
-            reranked = False
-            if rerank:
-                results = self.reranker.rerank(query, candidates, top_k=top_k)
-                reranked = True
-            else:
-                results = candidates[:top_k]
+            pipeline_result = self.pipeline.run(
+                query=query,
+                collection_id=collection_id,
+                strategy=strategy,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                rerank=rerank,
+                options=options,
+            )
+            candidates = pipeline_result.candidates
+            results = pipeline_result.results
 
             optimization = self.context_optimizer.optimize(
                 results,
                 budget,
                 merge_adjacent=merge_adjacent,
                 compression_mode=compression_mode,
+                query=query,
             )
             latency_ms = int((perf_counter() - started) * 1000)
             token_estimate = sum(item.token_estimate for item in results)
@@ -87,26 +98,28 @@ class ExperimentRunner:
                     "rerank": rerank,
                     "merge_adjacent": merge_adjacent,
                     "compression_mode": compression_mode,
+                    "options": options.model_dump(),
                     "experiment": True,
                 },
                 candidate_count=len(candidates),
-                reranked_count=len(results) if reranked else 0,
+                reranked_count=len(results) if pipeline_result.reranked else 0,
                 kept_evidence_count=len(optimization.selected),
                 token_estimate=optimization.token_estimate,
                 latency_ms=latency_ms,
                 evidence_ids=selected_ids,
                 trace_steps=[
-                    {"step": "retrieve", "strategy": strategy, "count": len(candidates)},
-                    {"step": "rerank", "enabled": reranked, "count": len(results)},
+                    *pipeline_result.trace_steps,
+                    {"step": "rerank", "enabled": pipeline_result.reranked, "count": len(results)},
                     {"step": "assemble", "selected_count": len(optimization.selected)},
                 ],
+                drop_reasons=optimization.dropped,
             )
             self.store.log_retrieval_run(run_record)
 
             runs.append(
                 {
                     "strategy": strategy,
-                    "reranked": reranked,
+                    "reranked": pipeline_result.reranked,
                     "candidate_count": len(candidates),
                     "result_count": len(results),
                     "selected_count": len(optimization.selected),
@@ -125,6 +138,8 @@ class ExperimentRunner:
                     "compression_mode": optimization.compression_mode,
                     "chunk_ids": selected_ids,
                     "result_chunk_ids": result_ids,
+                    "rewritten_queries": pipeline_result.rewritten_queries,
+                    "applied_options": options.model_dump(),
                     "metrics": {
                         "recall_at_k": recall_at_k(result_ids, gold_chunk_ids, top_k),
                         "mrr": mean_reciprocal_rank(result_ids, gold_chunk_ids),

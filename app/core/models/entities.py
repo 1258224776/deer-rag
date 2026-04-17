@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -54,6 +54,41 @@ class TokenBudget(BaseModel):
     @property
     def available(self) -> int:
         return max(self.total - self.reserve, 0)
+
+
+class MetadataFilters(BaseModel):
+    source_types: list[str] = Field(default_factory=list)
+    document_metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    chunk_metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    published_after: datetime | None = None
+    published_before: datetime | None = None
+    ingested_after: datetime | None = None
+    ingested_before: datetime | None = None
+
+
+class FreshnessConfig(BaseModel):
+    enabled: bool = False
+    weight: float = 0.15
+    half_life_days: int = 180
+    date_field: Literal["published_at", "ingested_at"] = "published_at"
+
+
+class GraphExpansionConfig(BaseModel):
+    enabled: bool = False
+    hops: int = 1
+    max_neighbors: int = 4
+    adjacency_weight: float = 0.08
+    entity_weight: float = 0.05
+
+
+class RetrievalOptions(BaseModel):
+    query_rewrite: bool = False
+    metadata_filters: MetadataFilters = Field(default_factory=MetadataFilters)
+    freshness: FreshnessConfig = Field(default_factory=FreshnessConfig)
+    entity_aware: bool = False
+    timeline_mode: bool = False
+    timeline_order: Literal["asc", "desc"] = "asc"
+    graph_expansion: GraphExpansionConfig = Field(default_factory=GraphExpansionConfig)
 
 
 class EvidencePack(BaseModel):

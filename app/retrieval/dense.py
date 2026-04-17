@@ -14,7 +14,7 @@ class DenseRetriever(BaseRetriever):
         self,
         registry: CollectionIndexRegistry,
         store: SQLiteMetadataStore,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        model_name: str = "BAAI/bge-small-zh-v1.5",
     ) -> None:
         self.registry = registry
         self.store = store
@@ -78,6 +78,11 @@ class DenseRetriever(BaseRetriever):
                     "section_title": record["chunk"].section_title,
                     "document_metadata": record["document"].metadata,
                     "chunk_metadata": record["chunk"].metadata,
+                    "source_type": record["document"].source_type,
+                    "published_at": (
+                        record["document"].published_at.isoformat() if record["document"].published_at is not None else None
+                    ),
+                    "ingested_at": record["document"].ingested_at.isoformat(),
                     "retrieval": "dense",
                 },
             )

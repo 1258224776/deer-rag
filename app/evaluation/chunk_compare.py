@@ -4,7 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from app.context import ContextOptimizer
-from app.core.models import Chunk, SourceDocument, TokenBudget
+from app.core.config import load_config
+from app.core.models import Chunk, RetrievalOptions, SourceDocument, TokenBudget
 from app.ingestion.chunkers import FixedChunker
 from app.indexing import CollectionIndexRegistry
 from app.retrieval import BM25Retriever, CrossEncoderReranker, DenseRetriever, HybridRetriever
@@ -33,6 +34,7 @@ class ChunkSizeCompareRunner:
         merge_adjacent: bool = True,
         compression_mode: str = "none",
         gold_chunk_ids: list[str] | None = None,
+        options: RetrievalOptions | None = None,
     ) -> dict:
         documents = self.store.list_documents(collection_id)
         if not documents:
@@ -49,32 +51,36 @@ class ChunkSizeCompareRunner:
                     temp_store.upsert_source_document(document)
                 temp_store.upsert_chunks(variant_chunks)
 
-                registry = CollectionIndexRegistry(temp_store, base_dir=temp_path / "indexes")
-                registry.build_collection_indexes(collection_id)
-                dense = DenseRetriever(registry, temp_store)
-                bm25 = BM25Retriever(registry, temp_store)
-                hybrid = HybridRetriever(dense, bm25)
-                runner = ExperimentRunner(
-                    dense_retriever=dense,
-                    bm25_retriever=bm25,
-                    hybrid_retriever=hybrid,
-                    reranker=CrossEncoderReranker(),
-                    context_optimizer=ContextOptimizer(),
-                    store=temp_store,
-                    artifact_store=ExperimentArtifactStore(temp_path / "artifacts"),
-                )
-                experiment = runner.run(
-                    query=query,
-                    collection_id=collection_id,
-                    strategies=list(strategies),
-                    top_k=top_k,
-                    candidate_k=candidate_k,
-                    rerank=rerank,
-                    budget=budget,
-                    merge_adjacent=merge_adjacent,
-                    compression_mode=compression_mode,
-                    gold_chunk_ids=gold_chunk_ids,
-                )
+                try:
+                    registry = CollectionIndexRegistry(temp_store, base_dir=temp_path / "indexes")
+                    registry.build_collection_indexes(collection_id)
+                    dense = DenseRetriever(registry, temp_store)
+                    bm25 = BM25Retriever(registry, temp_store)
+                    hybrid = HybridRetriever(dense, bm25, rrf_k=load_config().retrieval.hybrid_rrf_k)
+                    runner = ExperimentRunner(
+                        dense_retriever=dense,
+                        bm25_retriever=bm25,
+                        hybrid_retriever=hybrid,
+                        reranker=CrossEncoderReranker(),
+                        context_optimizer=ContextOptimizer(),
+                        store=temp_store,
+                        artifact_store=ExperimentArtifactStore(temp_path / "artifacts"),
+                    )
+                    experiment = runner.run(
+                        query=query,
+                        collection_id=collection_id,
+                        strategies=list(strategies),
+                        top_k=top_k,
+                        candidate_k=candidate_k,
+                        rerank=rerank,
+                        budget=budget,
+                        merge_adjacent=merge_adjacent,
+                        compression_mode=compression_mode,
+                        gold_chunk_ids=gold_chunk_ids,
+                        options=options,
+                    )
+                finally:
+                    temp_store.engine.dispose()
 
             token_counts = [chunk.token_count for chunk in variant_chunks]
             results.append(

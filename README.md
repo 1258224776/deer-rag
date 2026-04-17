@@ -159,20 +159,29 @@ Recommended fields:
 - graph-enhanced retrieval
 - lightweight domain adaptation
 
-## API Draft
+## Current API
 
-Initial endpoints:
-- `POST /collections`
+Implemented endpoints:
+- `GET /health`
 - `GET /collections`
+- `POST /collections`
+- `POST /ingest/text`
 - `POST /ingest/files`
 - `POST /ingest/web`
-- `POST /retrieve`
-- `POST /retrieve/hybrid`
-- `POST /retrieve/brief`
+- `POST /indexes/build`
+- `POST /retrieve` with `strategy = dense | bm25 | hybrid`
 - `POST /context/assemble`
 - `POST /experiments/run`
-- `GET /experiments/{id}`
-- `GET /metrics/query/{id}`
+- `POST /experiments/context-efficiency`
+- `POST /experiments/chunk-size`
+- `POST /experiments/run-config`
+- `GET /experiments/artifacts`
+- `GET /experiments/artifacts/{artifact_id}`
+- `POST /experiments/compare`
+- `POST /experiments/compare-summary`
+- `POST /evaluation/run-dataset`
+- `POST /experiments/benchmark/embeddings`
+- `POST /experiments/benchmark/rerankers`
 
 ## Suggested Stack
 
@@ -193,6 +202,71 @@ See [docs/QUICKSTART.md](./docs/QUICKSTART.md) for:
 - local API startup
 - minimal ingestion / indexing / retrieval flow
 - smoke tests
+
+## Real Mini Eval
+
+The repository now includes one real Chinese end-to-end retrieval mini-eval at [data/evaluation/mini-eval-python-venv-zh.yaml](./data/evaluation/mini-eval-python-venv-zh.yaml).
+
+It uses a version-pinned source document:
+- Python 3.14 zh-CN docs: `venv --- 创建虚拟环境`
+- source URL: `https://docs.python.org/zh-cn/3.14/library/venv.html`
+
+The eval script fetches that page, parses it, ingests it, builds dense + BM25 indexes, resolves gold chunks from chunk indexes, and runs offline evaluation:
+
+```bash
+python scripts/run_mini_eval_python_venv_zh.py
+```
+
+Current local baseline on this 1-document / 5-query setup:
+
+| setup | dense Recall@5 | dense MRR | bm25 Recall@5 | bm25 MRR | hybrid Recall@5 | hybrid MRR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| query rewrite off | 0.80 | 0.550 | 1.00 | 0.900 | 1.00 | 0.767 |
+| query rewrite on | 0.80 | 0.500 | 1.00 | 0.900 | 0.80 | 0.700 |
+
+This is intentionally small. Its purpose is not to claim benchmark completeness, but to prove a real and reproducible `ingest -> build index -> run eval -> inspect metrics` loop with non-placeholder gold evidence.
+
+With the current Chinese default embedding, this slice is still lexical-heavy: `bm25` remains strongest, while `query rewrite` slightly hurts rank quality instead of helping.
+
+## Real Eval Suite
+
+There is also a slice-based suite runner:
+
+```bash
+python scripts/run_real_eval_suite.py
+```
+
+It currently runs:
+- a `lexical` slice over the Python `venv` docs
+- a `semantic` slice over the Python design FAQ
+
+Current suite-level findings:
+- On the `lexical` slice, `bm25` remains the strongest ranker (`MRR 0.900`), while `dense` improves to `MRR 0.550` under the Chinese default embedding.
+- On the `semantic` slice, switching away from the old English embedding removes the pathological dense baseline: `dense MRR` rises from `0.0625` to `0.458`, which makes it competitive with `bm25` (`0.500`) instead of effectively random.
+- On the `semantic` slice, lowering `rrf_k` to `10` is still the best setting we measured; the default config now matches that observation.
+
+## Embedding Benchmark
+
+There is also a dedicated embedding benchmark runner:
+
+```bash
+python scripts/run_embedding_benchmark_suite.py --hybrid-rrf-k 10
+```
+
+Current semantic-slice dense results on the same Chinese conceptual queries:
+
+| model | dense Recall@5 | dense MRR |
+| --- | ---: | ---: |
+| `sentence-transformers/all-MiniLM-L6-v2` | 0.25 | 0.0625 |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 0.75 | 0.4375 |
+| `BAAI/bge-small-zh-v1.5` | 0.75 | 0.4583 |
+| `BAAI/bge-m3` | 0.75 | 0.3958 |
+
+Based on that benchmark, the repository now defaults to:
+- dense embedding model: `BAAI/bge-small-zh-v1.5`
+- hybrid RRF parameter: `10`
+
+`bge-m3` produced the best hybrid result on the lexical slice, but `bge-small-zh-v1.5` is the best practical default here because it gives the strongest dense result on the semantic Chinese slice while staying relatively light.
 
 ## Example Integration: deer-rag + agent-one
 
@@ -229,14 +303,17 @@ This project maps well to roles involving:
 
 ## Repo Status
 
-This repository is currently in the architecture and scaffold stage.
-The current priority is building the retrieval core first, then the optimization and evaluation layers.
+This repository is past the scaffold stage.
+The ingestion, indexing, retrieval, context optimization, and offline evaluation paths are implemented.
+The repository also now includes a real Chinese mini-eval, a slice-based eval suite, and an embedding benchmark with evidence-backed default settings.
+
+The current gap is not missing endpoints.
+The current gap is benchmark breadth and depth: expanding the current slices into a broader Chinese dataset with harder query classes, more documents, and stronger evidence-backed comparisons for rewrite, rerank, and chunking.
 
 ## Next Steps
 
-1. Implement collection and ingestion models.
-2. Build dense + BM25 hybrid retrieval.
-3. Add rerank and MMR deduplication.
-4. Add token-budget-aware context assembly.
-5. Add experiment runner and offline evaluation.
-6. Add integration examples for downstream systems such as `agent-one`.
+1. Expand the mini-eval into a multi-document Chinese benchmark.
+2. Split queries by difficulty instead of only growing query count.
+3. Benchmark query rewrite, rerank, and chunking against the same gold set.
+4. Improve metadata quality so freshness and timeline retrieval have stronger evidence.
+5. Add harder cases such as multi-hop, negation, and time-conditioned retrieval.

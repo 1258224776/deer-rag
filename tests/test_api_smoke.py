@@ -81,6 +81,28 @@ class FakeReranker:
         return reranked[:top_k] if top_k is not None else reranked
 
 
+class FakeRetrievalPipeline:
+    def run(self, *, query: str, collection_id: str, strategy: str, top_k: int, candidate_k: int | None = None, rerank: bool = False, options=None):
+        retriever = FakeRetriever(strategy)
+        candidates = retriever.retrieve(query, collection_id, top_k=candidate_k or top_k)
+        if rerank:
+            results = FakeReranker().rerank(query, candidates, top_k=top_k)
+        else:
+            results = candidates[:top_k]
+
+        class Result:
+            def __init__(self):
+                self.query = query
+                self.rewritten_queries = [query] if not getattr(options, "query_rewrite", False) else [query, f"{query} rewritten"]
+                self.candidates = candidates
+                self.results = results
+                self.reranked = rerank
+                self.trace_steps = [{"step": "retrieve", "count": len(candidates)}]
+                self.diagnostics = {"graph_added": 0, "filtered_out": 0, "entity_matches": 0, "freshness_applied": 0}
+
+        return Result()
+
+
 class FakeContextOptimizer:
     def optimize(self, evidence, budget, *, merge_adjacent=True, compression_mode="none"):
         class Result:
@@ -278,6 +300,56 @@ class FakeOfflineEvaluationRunner:
         }
 
 
+class FakeEmbeddingBenchmarkRunner:
+    def run_dataset(self, dataset, **kwargs):
+        return {
+            "collection_id": dataset.collection_id,
+            "case_count": len(dataset.cases),
+            "hybrid_rrf_k": kwargs.get("hybrid_rrf_k") or 60,
+            "models": [
+                {
+                    "model_name": model_name,
+                    "summary": [
+                        {
+                            "strategy": strategy,
+                            "avg_latency_ms": 1.0,
+                            "avg_token_estimate": 80.0,
+                            "avg_recall_at_k": 0.5,
+                            "avg_mrr": 0.5,
+                            "avg_ndcg_at_k": 0.5,
+                        }
+                        for strategy in kwargs["strategies"]
+                    ],
+                }
+                for model_name in kwargs["embedding_models"]
+            ],
+        }
+
+
+class FakeRerankerBenchmarkRunner:
+    def run_dataset(self, dataset, **kwargs):
+        return {
+            "collection_id": dataset.collection_id,
+            "case_count": len(dataset.cases),
+            "models": [
+                {
+                    "model_name": model_name,
+                    "summary": [
+                        {
+                            "strategy": kwargs["strategy"],
+                            "avg_latency_ms": 1.0,
+                            "avg_token_estimate": 70.0,
+                            "avg_recall_at_k": 0.6,
+                            "avg_mrr": 0.6,
+                            "avg_ndcg_at_k": 0.6,
+                        }
+                    ],
+                }
+                for model_name in kwargs["reranker_models"]
+            ],
+        }
+
+
 def make_cached(value):
     @lru_cache(maxsize=1)
     def _factory():
@@ -296,12 +368,15 @@ def build_client():
     routes.get_bm25_retriever = make_cached(FakeRetriever("bm25"))
     routes.get_hybrid_retriever = make_cached(FakeRetriever("hybrid"))
     routes.get_reranker = make_cached(FakeReranker())
+    routes.get_retrieval_pipeline = make_cached(FakeRetrievalPipeline())
     routes.get_context_optimizer = make_cached(FakeContextOptimizer())
     routes.get_context_packer = make_cached(FakeContextPacker())
     routes.get_experiment_artifact_store = make_cached(FakeExperimentArtifactStore())
     routes.get_experiment_runner = make_cached(FakeExperimentRunner())
     routes.get_chunk_size_compare_runner = make_cached(FakeChunkSizeCompareRunner())
     routes.get_offline_evaluation_runner = make_cached(FakeOfflineEvaluationRunner())
+    routes.get_embedding_benchmark_runner = make_cached(FakeEmbeddingBenchmarkRunner())
+    routes.get_reranker_benchmark_runner = make_cached(FakeRerankerBenchmarkRunner())
 
     app = create_app()
     return TestClient(app), fake_store
@@ -433,7 +508,7 @@ def test_experiment_run_config_and_artifact(tmp_path: Path):
 
     experiments_dir = Path("D:/deer-rag/data/experiments")
     experiments_dir.mkdir(parents=True, exist_ok=True)
-    config_path = experiments_dir / "smoke-experiment.yaml"
+    config_path = experiments_dir / "smoke-experiment-runtime.yaml"
     config_path.write_text(
         "\n".join(
             [
@@ -489,7 +564,7 @@ def test_experiment_run_config_and_artifact(tmp_path: Path):
 
     evaluation_dir = Path("D:/deer-rag/data/evaluation")
     evaluation_dir.mkdir(parents=True, exist_ok=True)
-    dataset_path = evaluation_dir / "smoke-dataset.yaml"
+    dataset_path = evaluation_dir / "smoke-dataset-runtime.yaml"
     dataset_path.write_text(
         "\n".join(
             [
@@ -509,3 +584,27 @@ def test_experiment_run_config_and_artifact(tmp_path: Path):
     )
     assert evaluation.status_code == 200
     assert evaluation.json()["case_count"] == 1
+
+    embedding_benchmark = client.post(
+        "/experiments/benchmark/embeddings",
+        json={
+            "dataset_path": str(dataset_path),
+            "embedding_models": ["model-a", "model-b"],
+            "strategies": ["dense"],
+            "top_k": 2,
+        },
+    )
+    assert embedding_benchmark.status_code == 200
+    assert len(embedding_benchmark.json()["models"]) == 2
+
+    reranker_benchmark = client.post(
+        "/experiments/benchmark/rerankers",
+        json={
+            "dataset_path": str(dataset_path),
+            "reranker_models": ["reranker-a", "reranker-b"],
+            "strategy": "hybrid",
+            "top_k": 2,
+        },
+    )
+    assert reranker_benchmark.status_code == 200
+    assert len(reranker_benchmark.json()["models"]) == 2

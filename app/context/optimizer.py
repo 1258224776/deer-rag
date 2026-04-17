@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
+import os
+import re
 
+import httpx
 import tiktoken
 
 from app.core.models import EvidencePack, TokenBudget
+from app.retrieval.text import extract_entity_terms, tokenize_text
 
 
 @dataclass
@@ -25,6 +30,9 @@ class ContextOptimizer:
             self.encoder = tiktoken.get_encoding(encoder_name)
         except Exception:
             self.encoder = None
+        self.abstractive_api_key = os.getenv("OPENAI_API_KEY")
+        self.abstractive_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        self.abstractive_model = os.getenv("DEER_RAG_ABSTRACTIVE_MODEL")
 
     def optimize(
         self,
@@ -33,6 +41,7 @@ class ContextOptimizer:
         *,
         merge_adjacent: bool = True,
         compression_mode: str = "none",
+        query: str | None = None,
     ) -> OptimizationResult:
         original_token_estimate = sum(self._normalize_tokens(item).token_estimate for item in evidence)
         deduped, dedup_drops = self._deduplicate(evidence)
@@ -51,7 +60,12 @@ class ContextOptimizer:
                 dropped.append({"chunk_id": item.chunk_id, "reason": "max_evidence_count"})
                 continue
 
-            trimmed = self._apply_per_evidence_budget(item, budget.per_evidence, compression_mode=compression_mode)
+            trimmed = self._apply_per_evidence_budget(
+                item,
+                budget.per_evidence,
+                compression_mode=compression_mode,
+                query=query,
+            )
             if trimmed.token_estimate <= 0:
                 dropped.append({"chunk_id": item.chunk_id, "reason": "empty_after_trim"})
                 continue
@@ -99,9 +113,21 @@ class ContextOptimizer:
             return item
         return item.model_copy(update={"token_estimate": self._estimate_tokens(item.snippet)})
 
-    def _apply_per_evidence_budget(self, item: EvidencePack, per_evidence: int, *, compression_mode: str = "none") -> EvidencePack:
+    def _apply_per_evidence_budget(
+        self,
+        item: EvidencePack,
+        per_evidence: int,
+        *,
+        compression_mode: str = "none",
+        query: str | None = None,
+    ) -> EvidencePack:
         normalized = self._normalize_tokens(item)
-        compressed = self._compress_evidence(normalized, compression_mode=compression_mode, per_evidence=per_evidence)
+        compressed = self._compress_evidence(
+            normalized,
+            compression_mode=compression_mode,
+            per_evidence=per_evidence,
+            query=query,
+        )
         normalized = self._normalize_tokens(compressed)
         if normalized.token_estimate <= per_evidence:
             return normalized
@@ -120,7 +146,14 @@ class ContextOptimizer:
             }
         )
 
-    def _compress_evidence(self, item: EvidencePack, *, compression_mode: str, per_evidence: int) -> EvidencePack:
+    def _compress_evidence(
+        self,
+        item: EvidencePack,
+        *,
+        compression_mode: str,
+        per_evidence: int,
+        query: str | None,
+    ) -> EvidencePack:
         if compression_mode == "none":
             return item
 
@@ -128,8 +161,19 @@ class ContextOptimizer:
         if not snippet:
             return item
 
+        token_limit = max(1, int(per_evidence * 0.75))
+        compression_metadata = {
+            **item.metadata,
+            "compressed": True,
+            "compression_mode": compression_mode,
+        }
         if compression_mode == "extractive":
-            compressed = self._extractive_compress(snippet, token_limit=max(1, int(per_evidence * 0.75)))
+            compressed = self._extractive_compress(snippet, token_limit=token_limit, query=query)
+        elif compression_mode == "abstractive":
+            compressed, used_remote = self._abstractive_compress(snippet, token_limit=token_limit, query=query)
+            compression_metadata["abstractive_remote"] = used_remote
+            if not used_remote:
+                compression_metadata["abstractive_fallback"] = "extractive"
         else:
             compressed = snippet
 
@@ -140,26 +184,98 @@ class ContextOptimizer:
             update={
                 "snippet": compressed,
                 "token_estimate": self._estimate_tokens(compressed),
-                "metadata": {
-                    **item.metadata,
-                    "compressed": True,
-                    "compression_mode": compression_mode,
-                },
+                "metadata": compression_metadata,
             }
         )
 
-    def _extractive_compress(self, text: str, token_limit: int) -> str:
-        paragraphs = [part.strip() for part in text.splitlines() if part.strip()]
-        if not paragraphs:
+    def _extractive_compress(self, text: str, token_limit: int, *, query: str | None = None) -> str:
+        sentences = self._split_sentences(text)
+        if not sentences:
+            return self._trim_to_tokens(text, token_limit)
+        if len(sentences) == 1:
+            return self._head_tail_text(sentences[0], token_limit)
+
+        query_terms = set(extract_entity_terms(query or "")) or set(tokenize_text(query or ""))
+        corpus_terms = [token for token in tokenize_text(text) if len(token) >= 2]
+        term_weights = Counter(corpus_terms)
+
+        scored: list[tuple[float, int, str]] = []
+        for index, sentence in enumerate(sentences):
+            sentence_terms = set(tokenize_text(sentence))
+            if not sentence_terms:
+                continue
+            overlap = sum(1 for term in sentence_terms if term in query_terms)
+            keyword_weight = sum(term_weights.get(term, 0) for term in sentence_terms)
+            entity_weight = len([term for term in query_terms if term in sentence_terms])
+            structure_bonus = 1.0 if index == 0 else 0.0
+            digit_bonus = 0.5 if any(char.isdigit() for char in sentence) else 0.0
+            score = (overlap * 3.0) + keyword_weight + (entity_weight * 1.5) + structure_bonus + digit_bonus
+            scored.append((score, index, sentence))
+
+        if not scored:
             return self._trim_to_tokens(text, token_limit)
 
-        if len(paragraphs) == 1:
-            return self._head_tail_text(paragraphs[0], token_limit)
+        chosen: list[tuple[int, str]] = []
+        running_tokens = 0
+        for _score, index, sentence in sorted(scored, key=lambda item: item[0], reverse=True):
+            sentence_tokens = self._estimate_tokens(sentence)
+            if sentence_tokens <= 0:
+                continue
+            if running_tokens + sentence_tokens > token_limit and chosen:
+                continue
+            chosen.append((index, sentence))
+            running_tokens += sentence_tokens
+            if running_tokens >= token_limit:
+                break
 
-        candidate = f"{paragraphs[0]}\n\n{paragraphs[-1]}"
-        if self._estimate_tokens(candidate) <= token_limit:
-            return candidate
-        return self._head_tail_text(candidate, token_limit)
+        if not chosen:
+            return self._trim_to_tokens(text, token_limit)
+
+        chosen.sort(key=lambda item: item[0])
+        compressed = " ".join(sentence for _index, sentence in chosen).strip()
+        if self._estimate_tokens(compressed) > token_limit:
+            return self._trim_to_tokens(compressed, token_limit)
+        return compressed
+
+    def _abstractive_compress(self, text: str, token_limit: int, *, query: str | None = None) -> tuple[str, bool]:
+        if not self.abstractive_api_key or not self.abstractive_model:
+            return self._extractive_compress(text, token_limit=token_limit, query=query), False
+
+        prompt = (
+            "Compress the following evidence into a concise citation-preserving summary. "
+            "Keep named entities, dates, and quantitative facts. Do not invent facts.\n\n"
+            f"Query: {query or 'N/A'}\n\nEvidence:\n{text}"
+        )
+        headers = {
+            "Authorization": f"Bearer {self.abstractive_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.abstractive_model,
+            "messages": [
+                {"role": "system", "content": "You compress retrieval evidence for downstream RAG prompts."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": max(64, token_limit),
+        }
+
+        try:
+            response = httpx.post(
+                f"{self.abstractive_base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            body = response.json()
+            content = body["choices"][0]["message"]["content"].strip()
+        except Exception:
+            return self._extractive_compress(text, token_limit=token_limit, query=query), False
+
+        if not content:
+            return self._extractive_compress(text, token_limit=token_limit, query=query), False
+        return self._trim_to_tokens(content, token_limit), True
 
     def _head_tail_text(self, text: str, token_limit: int) -> str:
         if token_limit <= 0:
@@ -178,6 +294,17 @@ class ContextOptimizer:
         head = max(token_limit // 2, 1)
         tail = max(token_limit - head, 1)
         return f"{' '.join(words[:head]).strip()}\n...\n{' '.join(words[-tail:]).strip()}".strip()
+
+    def _split_sentences(self, text: str) -> list[str]:
+        blocks = [block.strip() for block in re.split(r"[\r\n]+", text) if block.strip()]
+        sentences: list[str] = []
+        for block in blocks:
+            parts = [part.strip() for part in re.split(r"(?<=[。！？.!?])\s+", block) if part.strip()]
+            if parts:
+                sentences.extend(parts)
+            else:
+                sentences.append(block)
+        return sentences
 
     def _merge_adjacent(self, evidence: list[EvidencePack]) -> tuple[list[EvidencePack], list[dict], int]:
         by_doc: dict[str, list[EvidencePack]] = {}
@@ -263,7 +390,7 @@ class ContextOptimizer:
             return 0
         if self.encoder is not None:
             return len(self.encoder.encode(text))
-        return max(1, len(text.split()))
+        return max(1, len(tokenize_text(text)))
 
     def _effective_score(self, item: EvidencePack) -> float:
         if item.rerank_score is not None:

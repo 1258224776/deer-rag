@@ -11,3 +11,5 @@ data/raw/
 data/indexes/
 data/artifacts/
 data/metadata.sqlite3
+data/evaluation/*-runtime.yaml
+data/experiments/*-runtime.yaml

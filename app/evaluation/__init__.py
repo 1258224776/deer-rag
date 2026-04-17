@@ -1,22 +1,25 @@
-from .chunk_compare import ChunkSizeCompareRunner
 from .artifacts import ExperimentArtifactStore
+from .benchmark import EmbeddingBenchmarkRunner, RerankerBenchmarkRunner
+from .chunk_compare import ChunkSizeCompareRunner
 from .config import load_experiment_config
-from .dataset import EvaluationDataset, EvaluationCase, load_evaluation_dataset
+from .dataset import EvaluationCase, EvaluationDataset, load_evaluation_dataset
 from .metrics import jaccard_overlap, mean_reciprocal_rank, ndcg_at_k, recall_at_k
 from .offline import OfflineEvaluationRunner
 from .runner import ExperimentRunner
 
 __all__ = [
     "ChunkSizeCompareRunner",
-    "ExperimentArtifactStore",
+    "EmbeddingBenchmarkRunner",
     "EvaluationCase",
     "EvaluationDataset",
-    "load_experiment_config",
-    "load_evaluation_dataset",
+    "ExperimentArtifactStore",
+    "ExperimentRunner",
+    "OfflineEvaluationRunner",
+    "RerankerBenchmarkRunner",
     "jaccard_overlap",
+    "load_evaluation_dataset",
+    "load_experiment_config",
     "mean_reciprocal_rank",
     "ndcg_at_k",
-    "OfflineEvaluationRunner",
     "recall_at_k",
-    "ExperimentRunner",
 ]

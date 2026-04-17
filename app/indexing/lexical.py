@@ -6,6 +6,7 @@ from pathlib import Path
 from rank_bm25 import BM25Okapi
 
 from app.core.models import Chunk
+from app.retrieval.text import tokenize_text
 
 
 class BM25LexicalIndex:
@@ -36,6 +37,4 @@ class BM25LexicalIndex:
         return BM25Okapi(tokenized_corpus), chunk_ids
 
     def _tokenize(self, text: str) -> list[str]:
-        # MVP limitation: whitespace tokenization works poorly for Chinese text.
-        # A language-aware tokenizer should replace this in a later iteration.
-        return text.split()
+        return tokenize_text(text)

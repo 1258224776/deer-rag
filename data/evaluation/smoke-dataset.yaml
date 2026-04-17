@@ -1,3 +1,5 @@
+# Placeholder fixture for smoke tests only.
+# It validates the offline-eval wiring and is not meant to be a realistic dataset.
 collection_id: "29e15ac1-cbc0-4e5c-8a4a-efc919fdfd98"
 cases:
   - query: "artifact query"
