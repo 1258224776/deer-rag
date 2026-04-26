@@ -15,6 +15,17 @@ type ExperimentTableProps = {
 
 export function ExperimentTable({ title, result, pending, emptyMessage }: ExperimentTableProps) {
   const { t } = useI18n();
+
+  function getCompressionModeLabel(mode: string) {
+    if (mode === "extractive") {
+      return t.common.compressionModeLabels.extractive;
+    }
+    if (mode === "abstractive") {
+      return t.common.compressionModeLabels.abstractive;
+    }
+    return t.common.compressionModeLabels.none;
+  }
+
   if (pending) {
     return (
       <div className="panel-card animate-pulse p-5">
@@ -51,7 +62,7 @@ export function ExperimentTable({ title, result, pending, emptyMessage }: Experi
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="eyebrow-chip">{result.collection_id}</span>
-          {result.artifact_id ? <span className="eyebrow-chip">artifact {result.artifact_id}</span> : null}
+          {result.artifact_id ? <span className="eyebrow-chip">{t.common.artifact} {result.artifact_id}</span> : null}
         </div>
       </div>
 
@@ -89,8 +100,8 @@ export function ExperimentTable({ title, result, pending, emptyMessage }: Experi
               <th className="px-5 py-3 font-medium">{t.experimentTable.selected}</th>
               <th className="px-5 py-3 font-medium">{t.experimentTable.tokens}</th>
               <th className="px-5 py-3 font-medium">{t.experimentTable.savings}</th>
-              <th className="px-5 py-3 font-medium">Recall@k</th>
-              <th className="px-5 py-3 font-medium">MRR</th>
+              <th className="px-5 py-3 font-medium">{t.experimentTable.recallAtK}</th>
+              <th className="px-5 py-3 font-medium">{t.experimentTable.mrr}</th>
             </tr>
           </thead>
           <tbody>
@@ -98,12 +109,12 @@ export function ExperimentTable({ title, result, pending, emptyMessage }: Experi
               <tr key={strategy.strategy} className="border-t border-[color:var(--border)]">
                 <td className="px-5 py-4 align-top">
                   <div className="font-semibold text-[color:var(--ink)]">{strategy.strategy}</div>
-                  <div className="mt-1 text-xs text-[color:var(--muted)]">{strategy.compression_mode}</div>
+                  <div className="mt-1 text-xs text-[color:var(--muted)]">{getCompressionModeLabel(strategy.compression_mode)}</div>
                 </td>
                 <td className="px-5 py-4 align-top">
                   <div className="flex items-center gap-2 font-medium text-[color:var(--ink)]">
                     <Clock3 className="size-4 text-[color:var(--accent)]" />
-                    {strategy.latency_ms} ms
+                    {strategy.latency_ms} {t.common.milliseconds}
                   </div>
                 </td>
                 <td className="px-5 py-4 align-top">{strategy.candidate_count}</td>

@@ -7,7 +7,9 @@ from app.core.models import EvidencePack
 
 
 class CrossEncoderReranker(BaseReranker):
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2") -> None:
+    DEFAULT_MODEL_NAME = "BAAI/bge-reranker-base"
+
+    def __init__(self, model_name: str = DEFAULT_MODEL_NAME) -> None:
         self.model_name = model_name
         self._model: CrossEncoder | None = None
 

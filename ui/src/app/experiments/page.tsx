@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Beaker, History, LoaderCircle } from "lucide-react";
 
 import { ExperimentTable } from "@/components/experiment-table";
+import { SubpageHeader } from "@/components/subpage-header";
 import {
   getArtifact,
   getDefaultRetrievalOptions,
@@ -18,19 +19,20 @@ import {
 import { useI18n } from "@/lib/i18n";
 
 function ExperimentsPageContent() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const searchParams = useSearchParams();
   const initialCollectionId = searchParams.get("collection") ?? "";
+  const backLabel = locale === "zh" ? "返回集合" : "Back to Collections";
 
   const [collections, setCollections] = useState<Collection[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState(initialCollectionId);
 
-  const [query, setQuery] = useState("What retrieval strategies does deer-rag support?");
+  const [query, setQuery] = useState("deer-rag 支持哪些检索策略？");
   const [topK, setTopK] = useState(5);
   const [rerank, setRerank] = useState(false);
   const [queryRewrite, setQueryRewrite] = useState(false);
-  const [artifactName, setArtifactName] = useState("ui-baseline");
+  const [artifactName, setArtifactName] = useState("实验基线");
 
   const [useDense, setUseDense] = useState(true);
   const [useBm25, setUseBm25] = useState(true);
@@ -128,20 +130,13 @@ function ExperimentsPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="panel-card p-6">
-        <span className="section-label">{t.sidebar.nav.experimentsLabel}</span>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="font-[Bahnschrift,Aptos,sans-serif] text-4xl font-semibold tracking-tight text-[color:var(--ink)]">
-              {t.experimentsPage.heading}
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[color:var(--muted)]">
-              {t.experimentsPage.intro}
-            </p>
-          </div>
-        </div>
-
-        <form className="mt-6 grid gap-4" onSubmit={handleRun}>
+      <SubpageHeader
+        label={t.sidebar.nav.experimentsLabel}
+        title={t.experimentsPage.heading}
+        description={t.experimentsPage.intro}
+        backLabel={backLabel}
+      >
+        <form className="grid gap-4" onSubmit={handleRun}>
           <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_120px_220px]">
             <label className="field-shell">
               <span className="field-label">{t.common.collection}</span>
@@ -201,7 +196,7 @@ function ExperimentsPageContent() {
             </button>
           </div>
         </form>
-      </section>
+      </SubpageHeader>
 
       {error ? <div className="panel-card border-red-200 bg-red-50/80 p-4 text-sm text-red-700">{error}</div> : null}
 
@@ -229,7 +224,7 @@ function ExperimentsPageContent() {
                     {artifact.artifact_path}
                   </div>
                   <div className={`mt-2 text-xs ${selectedArtifactId === artifact.artifact_id ? "text-white/72" : "text-[color:var(--muted)]"}`}>
-                    {artifact.size_bytes} bytes
+                    {artifact.size_bytes} {t.common.bytes}
                   </div>
                 </button>
               ))

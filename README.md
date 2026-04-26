@@ -1,6 +1,8 @@
-﻿# deer-rag
+# deer-rag
 
 A modular RAG and retrieval optimization system focused on hybrid retrieval, reranking, token-efficient context assembly, and evaluation.
+
+[中文文档](./README.zh.md)
 
 ## Overview
 
@@ -197,15 +199,52 @@ Implemented endpoints:
 
 ## Quick Start
 
+### Windows one-click launcher
+
+```
+start-deer-rag.cmd
+```
+
+This starts the FastAPI backend and opens the standalone UI in a browser automatically.
+
+### Manual startup
+
 See [docs/QUICKSTART.md](./docs/QUICKSTART.md) for:
 - installation
 - local API startup
 - minimal ingestion / indexing / retrieval flow
 - smoke tests
 
+### Standalone UI
+
+The repository includes a Next.js-based standalone UI at `ui/`.
+It supports English and Chinese (switchable in the sidebar) and covers the full workflow:
+ingestion, index building, search, and experiment comparison.
+
+To run the UI separately:
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+The UI connects to the FastAPI backend at `http://localhost:8000` by default.
+
+### Configuration
+
+By default the server runs on built-in defaults.
+To use a custom config file, set the environment variable before starting:
+
+```bash
+DEER_RAG_CONFIG=path/to/config.yaml uvicorn app.api.app:app --reload
+```
+
+If the env var is set and the file does not exist, the server will raise an error rather than silently falling back to defaults.
+
 ## Real Mini Eval
 
-The repository now includes one real Chinese end-to-end retrieval mini-eval at [data/evaluation/mini-eval-python-venv-zh.yaml](./data/evaluation/mini-eval-python-venv-zh.yaml).
+The repository includes a real Chinese end-to-end retrieval mini-eval at [data/evaluation/mini-eval-python-venv-zh.yaml](./data/evaluation/mini-eval-python-venv-zh.yaml).
 
 It uses a version-pinned source document:
 - Python 3.14 zh-CN docs: `venv --- 创建虚拟环境`
@@ -264,6 +303,7 @@ Current semantic-slice dense results on the same Chinese conceptual queries:
 
 Based on that benchmark, the repository now defaults to:
 - dense embedding model: `BAAI/bge-small-zh-v1.5`
+- reranker model: `BAAI/bge-reranker-base` (Chinese-aligned, same model family as the embedding model)
 - hybrid RRF parameter: `10`
 
 `bge-m3` produced the best hybrid result on the lexical slice, but `bge-small-zh-v1.5` is the best practical default here because it gives the strongest dense result on the semantic Chinese slice while staying relatively light.
@@ -303,17 +343,19 @@ This project maps well to roles involving:
 
 ## Repo Status
 
-This repository is past the scaffold stage.
-The ingestion, indexing, retrieval, context optimization, and offline evaluation paths are implemented.
-The repository also now includes a real Chinese mini-eval, a slice-based eval suite, and an embedding benchmark with evidence-backed default settings.
+The ingestion, indexing, retrieval, context optimization, and offline evaluation paths are all implemented.
+The repository includes a real Chinese mini-eval, a slice-based eval suite, and an embedding benchmark with evidence-backed default settings.
+A standalone Next.js UI with English/Chinese i18n is available and connects to the FastAPI backend.
+Config loading now supports a `DEER_RAG_CONFIG` environment variable and raises explicit errors on missing files.
 
-The current gap is not missing endpoints.
-The current gap is benchmark breadth and depth: expanding the current slices into a broader Chinese dataset with harder query classes, more documents, and stronger evidence-backed comparisons for rewrite, rerank, and chunking.
+The current gap is not missing endpoints or missing features.
+The current gap is benchmark depth: expanding the eval slices to cover more documents, harder query classes, and evidence-backed comparisons for rewrite, rerank, and chunking strategies.
 
 ## Next Steps
 
-1. Expand the mini-eval into a multi-document Chinese benchmark.
-2. Split queries by difficulty instead of only growing query count.
-3. Benchmark query rewrite, rerank, and chunking against the same gold set.
-4. Improve metadata quality so freshness and timeline retrieval have stronger evidence.
-5. Add harder cases such as multi-hop, negation, and time-conditioned retrieval.
+1. Expand the mini-eval into a multi-document Chinese benchmark with harder query classes.
+2. Benchmark query rewrite, rerank, and chunking against the same gold set to establish which options actually help.
+3. Add a Chinese-aligned reranker benchmark slice to validate the `bge-reranker-base` default.
+4. Improve metadata quality so freshness and timeline retrieval have stronger evaluation evidence.
+5. Add harder retrieval cases: multi-hop, negation, time-conditioned, and cross-document reasoning.
+6. Pre-compute chunk adjacency and document metadata to move graph expansion cost from query time to index time.

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LoaderCircle, Search } from "lucide-react";
 
+import { SubpageHeader } from "@/components/subpage-header";
 import { SearchResults } from "@/components/search-results";
 import {
   getDefaultRetrievalOptions,
@@ -15,15 +16,16 @@ import {
 import { useI18n } from "@/lib/i18n";
 
 function SearchPageContent() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const searchParams = useSearchParams();
   const initialCollectionId = searchParams.get("collection") ?? "";
+  const backLabel = locale === "zh" ? "返回集合" : "Back to Collections";
 
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loadingCollections, setLoadingCollections] = useState(true);
   const [selectedCollectionId, setSelectedCollectionId] = useState(initialCollectionId);
 
-  const [query, setQuery] = useState("What retrieval strategies does deer-rag support?");
+  const [query, setQuery] = useState("deer-rag 支持哪些检索策略？");
   const [strategy, setStrategy] = useState<"dense" | "bm25" | "hybrid">("hybrid");
   const [topK, setTopK] = useState(5);
   const [rerank, setRerank] = useState(false);
@@ -81,20 +83,13 @@ function SearchPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="panel-card p-6">
-        <span className="section-label">{t.sidebar.nav.searchLabel}</span>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="font-[Bahnschrift,Aptos,sans-serif] text-4xl font-semibold tracking-tight text-[color:var(--ink)]">
-              {t.searchPage.heading}
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[color:var(--muted)]">
-              {t.searchPage.intro}
-            </p>
-          </div>
-        </div>
-
-        <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
+      <SubpageHeader
+        label={t.sidebar.nav.searchLabel}
+        title={t.searchPage.heading}
+        description={t.searchPage.intro}
+        backLabel={backLabel}
+      >
+        <form className="grid gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 xl:grid-cols-[260px_180px_140px_minmax(0,1fr)]">
             <label className="field-shell">
               <span className="field-label">{t.common.collection}</span>
@@ -154,7 +149,7 @@ function SearchPageContent() {
             </button>
           </div>
         </form>
-      </section>
+      </SubpageHeader>
 
       <SearchResults response={response} pending={pending} error={error} />
     </div>

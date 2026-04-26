@@ -14,7 +14,7 @@ class DenseRetriever(BaseRetriever):
         self,
         registry: CollectionIndexRegistry,
         store: SQLiteMetadataStore,
-        model_name: str = "BAAI/bge-small-zh-v1.5",
+        model_name: str = FaissDenseIndex.DEFAULT_MODEL_NAME,
     ) -> None:
         self.registry = registry
         self.store = store

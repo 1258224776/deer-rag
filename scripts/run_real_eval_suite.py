@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from app.context import ContextOptimizer
+from app.core.config import load_config
 from app.core.models import RetrievalOptions, TokenBudget
 from app.evaluation import ExperimentArtifactStore, ExperimentRunner, OfflineEvaluationRunner
 from app.retrieval import BM25Retriever, CrossEncoderReranker, DenseRetriever, HybridRetriever
@@ -27,11 +28,12 @@ DEFAULT_REPORT_PATH = Path("data/artifacts/real-eval-suite-report.json")
 def run_rrf_ablation(spec: dict, dataset, runtime_meta: dict, *, rrf_k_values: list[int]) -> dict:
     store = runtime_meta["store"]
     registry = runtime_meta["registry"]
+    config = load_config()
     top_k = int(spec.get("evaluation", {}).get("top_k", 5))
     rows = []
 
     for rrf_k in rrf_k_values:
-        dense = DenseRetriever(registry, store)
+        dense = DenseRetriever(registry, store, model_name=config.models.embedding_model_name)
         bm25 = BM25Retriever(registry, store)
         hybrid = HybridRetriever(dense, bm25, rrf_k=rrf_k)
         runner = OfflineEvaluationRunner(
@@ -39,7 +41,7 @@ def run_rrf_ablation(spec: dict, dataset, runtime_meta: dict, *, rrf_k_values: l
                 dense_retriever=dense,
                 bm25_retriever=bm25,
                 hybrid_retriever=hybrid,
-                reranker=CrossEncoderReranker(),
+                reranker=CrossEncoderReranker(model_name=config.models.reranker_model_name),
                 context_optimizer=ContextOptimizer(),
                 store=store,
                 artifact_store=ExperimentArtifactStore(Path("data/artifacts")),

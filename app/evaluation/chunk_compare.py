@@ -41,6 +41,7 @@ class ChunkSizeCompareRunner:
             raise ValueError("No source documents found for the collection")
 
         results: list[dict] = []
+        config = load_config()
         for chunk_size in chunk_sizes:
             variant_chunks, variant_documents = self._build_variant_chunks(documents, chunk_size=chunk_size, overlap=overlap)
             with TemporaryDirectory(prefix="deer-rag-chunk-compare-") as temp_dir:
@@ -52,16 +53,20 @@ class ChunkSizeCompareRunner:
                 temp_store.upsert_chunks(variant_chunks)
 
                 try:
-                    registry = CollectionIndexRegistry(temp_store, base_dir=temp_path / "indexes")
+                    registry = CollectionIndexRegistry(
+                        temp_store,
+                        base_dir=temp_path / "indexes",
+                        dense_model_name=config.models.embedding_model_name,
+                    )
                     registry.build_collection_indexes(collection_id)
-                    dense = DenseRetriever(registry, temp_store)
+                    dense = DenseRetriever(registry, temp_store, model_name=config.models.embedding_model_name)
                     bm25 = BM25Retriever(registry, temp_store)
-                    hybrid = HybridRetriever(dense, bm25, rrf_k=load_config().retrieval.hybrid_rrf_k)
+                    hybrid = HybridRetriever(dense, bm25, rrf_k=config.retrieval.hybrid_rrf_k)
                     runner = ExperimentRunner(
                         dense_retriever=dense,
                         bm25_retriever=bm25,
                         hybrid_retriever=hybrid,
-                        reranker=CrossEncoderReranker(),
+                        reranker=CrossEncoderReranker(model_name=config.models.reranker_model_name),
                         context_optimizer=ContextOptimizer(),
                         store=temp_store,
                         artifact_store=ExperimentArtifactStore(temp_path / "artifacts"),

@@ -27,13 +27,26 @@ class FakeStore:
     def __init__(self, documents: list[SourceDocument], chunks: list[Chunk]) -> None:
         self.documents = documents
         self.chunks = chunks
+        self.used_targeted_chunk_lookup = False
 
     def list_documents(self, collection_id: str) -> list[SourceDocument]:
-        return [item for item in self.documents if item.collection_id == collection_id]
+        raise AssertionError("graph expansion should not load all documents during query execution")
 
     def list_chunks(self, collection_id: str) -> list[Chunk]:
-        document_ids = {item.id for item in self.list_documents(collection_id)}
-        return [item for item in self.chunks if item.document_id in document_ids]
+        raise AssertionError("graph expansion should not load all chunks during query execution")
+
+    def get_chunk_records_by_document_indexes(self, collection_id: str, document_indexes: dict[str, set[int]]) -> list[dict]:
+        self.used_targeted_chunk_lookup = True
+        valid_document_ids = {item.id for item in self.documents if item.collection_id == collection_id}
+        records = []
+        for chunk in self.chunks:
+            if chunk.document_id not in valid_document_ids:
+                continue
+            if chunk.chunk_index not in document_indexes.get(chunk.document_id, set()):
+                continue
+            document = next(item for item in self.documents if item.id == chunk.document_id)
+            records.append({"chunk": chunk, "document": document})
+        return records
 
 
 def test_tokenize_text_supports_cjk_bigrams_and_compatibility_block() -> None:
@@ -134,6 +147,7 @@ def test_retrieval_pipeline_applies_metadata_filters_and_graph_expansion() -> No
     assert len(result.candidates) >= 2
     assert result.rewritten_queries
     assert all(item.metadata.get("source_type") == "text" for item in result.results)
+    assert pipeline.store.used_targeted_chunk_lookup is True
 
 
 def test_context_optimizer_extractive_is_query_aware() -> None:

@@ -67,7 +67,9 @@ export function SearchResults({ response, pending, error }: SearchResultsProps) 
             <Timer className="size-4 text-[color:var(--accent)]" />
             {t.searchResults.latency}
           </div>
-          <p className="text-2xl font-semibold">{response.metrics.latency_ms as number} ms</p>
+          <p className="text-2xl font-semibold">
+            {response.metrics.latency_ms as number} {t.common.milliseconds}
+          </p>
         </div>
         <div className="metric-block">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[color:var(--ink)]">

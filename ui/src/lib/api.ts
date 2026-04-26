@@ -1,4 +1,5 @@
 export const apiBaseUrl = process.env.NEXT_PUBLIC_DEER_RAG_API_BASE_URL ?? "http://127.0.0.1:8010";
+const STORAGE_KEY = "deer-rag-ui-locale";
 
 export type Collection = {
   id: string;
@@ -166,16 +167,48 @@ export function getDefaultRetrievalOptions(queryRewrite = false): RetrievalOptio
   };
 }
 
+function getCurrentLocale() {
+  if (typeof window === "undefined") {
+    return "zh";
+  }
+  const saved = window.localStorage.getItem(STORAGE_KEY);
+  return saved === "en" ? "en" : "zh";
+}
+
+function localizeErrorMessage(message: string) {
+  if (getCurrentLocale() !== "zh") {
+    return message;
+  }
+
+  if (message === "Collection not found") {
+    return "未找到集合。";
+  }
+  if (message === "Request failed.") {
+    return "请求失败。";
+  }
+  if (message.startsWith("Unsupported file type: ")) {
+    return `不支持的文件类型：${message.slice("Unsupported file type: ".length)}`;
+  }
+  if (message.startsWith("Invalid metadata_json: ")) {
+    return `元数据 JSON 无效：${message.slice("Invalid metadata_json: ".length)}`;
+  }
+  if (message.startsWith("Failed to fetch URL: ")) {
+    return `抓取 URL 失败：${message.slice("Failed to fetch URL: ".length)}`;
+  }
+
+  return message;
+}
+
 function normalizeError(detail: unknown) {
   if (typeof detail === "string") {
-    return detail;
+    return localizeErrorMessage(detail);
   }
 
   if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
-    return detail.message;
+    return localizeErrorMessage(detail.message);
   }
 
-  return "Request failed.";
+  return localizeErrorMessage("Request failed.");
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

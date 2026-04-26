@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDateTime(value?: string | null) {
   if (!value) {
-    return "N/A";
+    return "--";
   }
 
   const date = new Date(value);
@@ -20,7 +20,7 @@ export function formatDateTime(value?: string | null) {
 
 export function formatMetric(value?: number | null, digits = 2) {
   if (value === undefined || value === null || Number.isNaN(value)) {
-    return "N/A";
+    return "--";
   }
 
   return value.toFixed(digits);

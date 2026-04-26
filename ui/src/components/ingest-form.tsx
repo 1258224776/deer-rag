@@ -26,16 +26,16 @@ export function IngestForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [textTitle, setTextTitle] = useState("Ops note");
-  const [textSourceUri, setTextSourceUri] = useState("memory://ops-note");
+  const [textTitle, setTextTitle] = useState("运维说明");
+  const [textSourceUri, setTextSourceUri] = useState("memory://yunwei-shuoming");
   const [textBody, setTextBody] = useState(
-    "deer-rag supports collection management, ingestion, index building, search, and experiment history from a single local UI.",
+    "deer-rag 支持在同一个本地界面里完成集合管理、内容摄入、索引构建、检索调试和实验历史查看。",
   );
-  const [textMetadata, setTextMetadata] = useState('{"lang":"en","source":"ui"}');
+  const [textMetadata, setTextMetadata] = useState('{"lang":"zh","source":"ui"}');
 
-  const [urlValue, setUrlValue] = useState("https://docs.python.org/3/library/venv.html");
-  const [urlTitle, setUrlTitle] = useState("Python venv");
-  const [urlMetadata, setUrlMetadata] = useState('{"lang":"en","source":"web"}');
+  const [urlValue, setUrlValue] = useState("https://docs.python.org/zh-cn/3/library/venv.html");
+  const [urlTitle, setUrlTitle] = useState("Python venv 文档");
+  const [urlMetadata, setUrlMetadata] = useState('{"lang":"zh","source":"web"}');
 
   const [fileTitle, setFileTitle] = useState("");
   const [fileMetadata, setFileMetadata] = useState("{}");
@@ -133,16 +133,7 @@ export function IngestForm({
 
   return (
     <div className="panel-card p-5">
-      <div className="mb-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-        <div>
-          <p className="section-label mb-2">{t.ingestForm.sectionLabel}</p>
-          <h2 className="font-[Bahnschrift,Aptos,sans-serif] text-3xl font-semibold tracking-tight text-[color:var(--ink)]">
-            {t.ingestForm.heading}
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--muted)]">
-            {t.ingestForm.intro}
-          </p>
-        </div>
+      <div className="mb-5 max-w-[220px]">
         <label className="field-shell">
           <span className="field-label">{t.common.targetCollection}</span>
           <select

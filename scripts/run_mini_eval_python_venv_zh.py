@@ -46,7 +46,11 @@ def build_dataset(spec: dict) -> tuple[EvaluationDataset, dict]:
 
     store = SQLiteMetadataStore(config.paths.metadata_db)
     store.init_db()
-    registry = CollectionIndexRegistry(store=store, base_dir=config.paths.data_dir / "indexes")
+    registry = CollectionIndexRegistry(
+        store=store,
+        base_dir=config.paths.data_dir / "indexes",
+        dense_model_name=config.models.embedding_model_name,
+    )
     chunker = FixedChunker(
         chunk_size=int(chunking["chunk_size"]),
         overlap=int(chunking["overlap"]),
@@ -152,19 +156,20 @@ def resolve_cases(raw_cases: list[dict], chunks: list, *, default_slice: str | N
 
 
 def build_runner(store: SQLiteMetadataStore, registry: CollectionIndexRegistry) -> tuple[OfflineEvaluationRunner, DenseRetriever, BM25Retriever]:
-    dense_retriever = DenseRetriever(registry, store)
+    config = load_config()
+    dense_retriever = DenseRetriever(registry, store, model_name=config.models.embedding_model_name)
     bm25_retriever = BM25Retriever(registry, store)
-    hybrid_retriever = HybridRetriever(dense_retriever, bm25_retriever, rrf_k=load_config().retrieval.hybrid_rrf_k)
+    hybrid_retriever = HybridRetriever(dense_retriever, bm25_retriever, rrf_k=config.retrieval.hybrid_rrf_k)
 
     runner = OfflineEvaluationRunner(
         ExperimentRunner(
             dense_retriever=dense_retriever,
             bm25_retriever=bm25_retriever,
             hybrid_retriever=hybrid_retriever,
-            reranker=CrossEncoderReranker(),
+            reranker=CrossEncoderReranker(model_name=config.models.reranker_model_name),
             context_optimizer=ContextOptimizer(),
             store=store,
-            artifact_store=ExperimentArtifactStore(load_config().paths.experiments_dir),
+            artifact_store=ExperimentArtifactStore(config.paths.experiments_dir),
         )
     )
     return runner, dense_retriever, bm25_retriever

@@ -18,9 +18,15 @@ class CollectionIndexPaths:
 
 
 class CollectionIndexRegistry:
-    def __init__(self, store: SQLiteMetadataStore, base_dir: str | Path = "data/indexes") -> None:
+    def __init__(
+        self,
+        store: SQLiteMetadataStore,
+        base_dir: str | Path = "data/indexes",
+        dense_model_name: str = FaissDenseIndex.DEFAULT_MODEL_NAME,
+    ) -> None:
         self.store = store
         self.base_dir = Path(base_dir)
+        self.dense_model_name = dense_model_name
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def paths_for(self, collection_id: str) -> CollectionIndexPaths:
@@ -43,6 +49,7 @@ class CollectionIndexRegistry:
         dense_index = FaissDenseIndex(
             index_path=paths.dense_index_path,
             meta_path=paths.dense_meta_path,
+            model_name=self.dense_model_name,
         )
         lexical_index = BM25LexicalIndex(state_path=paths.lexical_state_path)
 

@@ -37,12 +37,13 @@ class EmbeddingBenchmarkRunner:
         hybrid_rrf_k: int | None = None,
     ) -> dict:
         collection_id = dataset.collection_id
+        config = load_config()
         documents = self.store.list_documents(collection_id)
         chunks = self.store.list_chunks(collection_id)
         if not documents or not chunks:
             raise ValueError("Collection must contain documents and chunks before running embedding benchmarks")
 
-        effective_rrf_k = hybrid_rrf_k or load_config().retrieval.hybrid_rrf_k
+        effective_rrf_k = hybrid_rrf_k or config.retrieval.hybrid_rrf_k
         models: list[dict] = []
         for model_name in embedding_models:
             with TemporaryDirectory(prefix="deer-rag-embedding-benchmark-") as temp_dir:
@@ -64,7 +65,7 @@ class EmbeddingBenchmarkRunner:
                         dense_retriever=dense,
                         bm25_retriever=bm25,
                         hybrid_retriever=hybrid,
-                        reranker=CrossEncoderReranker(),
+                        reranker=CrossEncoderReranker(model_name=config.models.reranker_model_name),
                         context_optimizer=ContextOptimizer(),
                         store=temp_store,
                         artifact_store=ExperimentArtifactStore(Path(temp_dir) / "artifacts"),

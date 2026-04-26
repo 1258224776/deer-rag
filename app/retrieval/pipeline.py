@@ -280,33 +280,43 @@ class RetrievalPipeline:
         options: RetrievalOptions,
         fetch_k: int,
     ) -> tuple[list[EvidencePack], int]:
-        documents = {item.id: item for item in self.store.list_documents(collection_id)}
-        chunks = self.store.list_chunks(collection_id)
-        chunks_by_doc: dict[str, dict[int, Chunk]] = {}
-        for chunk in chunks:
-            chunks_by_doc.setdefault(chunk.document_id, {})[chunk.chunk_index] = chunk
-
         existing = {item.chunk_id: item for item in candidates}
         added = 0
         query_entities = extract_entity_terms(query)
         adjacency_limit = max(options.graph_expansion.max_neighbors, 1)
+        neighbor_indexes_by_doc: dict[str, set[int]] = {}
 
         for seed in candidates[:fetch_k]:
             chunk_index = seed.metadata.get("chunk_index")
             if chunk_index is None:
                 continue
-            doc_chunks = chunks_by_doc.get(seed.document_id, {})
+
+            for distance in range(1, options.graph_expansion.hops + 1):
+                indexes = neighbor_indexes_by_doc.setdefault(seed.document_id, set())
+                indexes.add(int(chunk_index) - distance)
+                indexes.add(int(chunk_index) + distance)
+
+        neighbor_records = self.store.get_chunk_records_by_document_indexes(collection_id, neighbor_indexes_by_doc)
+        neighbor_record_map = {
+            (record["chunk"].document_id, record["chunk"].chunk_index): record
+            for record in neighbor_records
+        }
+
+        for seed in candidates[:fetch_k]:
+            chunk_index = seed.metadata.get("chunk_index")
+            if chunk_index is None:
+                continue
             for distance in range(1, options.graph_expansion.hops + 1):
                 for neighbor_index in (int(chunk_index) - distance, int(chunk_index) + distance):
-                    neighbor = doc_chunks.get(neighbor_index)
-                    if neighbor is None or neighbor.id in existing or added >= adjacency_limit * fetch_k:
+                    record = neighbor_record_map.get((seed.document_id, neighbor_index))
+                    if record is None or added >= adjacency_limit * fetch_k:
                         continue
-                    document = documents.get(neighbor.document_id)
-                    if document is None:
+                    neighbor = record["chunk"]
+                    if neighbor.id in existing:
                         continue
                     candidate = self._build_expanded_candidate(
                         chunk=neighbor,
-                        document=document,
+                        document=record["document"],
                         score=(seed.score * 0.5) + (options.graph_expansion.adjacency_weight / distance),
                         retrieval="graph-adjacent",
                         metadata={
@@ -318,40 +328,66 @@ class RetrievalPipeline:
                     added += 1
 
         if query_entities:
-            entity_candidates: list[tuple[float, Chunk]] = []
-            for chunk in chunks:
-                if chunk.id in existing:
+            entity_candidates = self._retrieve_entity_candidates(
+                collection_id=collection_id,
+                query_entities=query_entities,
+                limit=adjacency_limit,
+                weight=options.graph_expansion.entity_weight,
+            )
+            for item in entity_candidates:
+                if item.chunk_id in existing:
                     continue
-                document = documents.get(chunk.document_id)
-                if document is None:
-                    continue
-                match_count = sum(
-                    1
-                    for term in query_entities
-                    if contains_token(chunk.text, term) or contains_token(document.title, term) or contains_token(document.source_uri, term)
-                )
-                if match_count <= 0:
-                    continue
-                entity_candidates.append((options.graph_expansion.entity_weight * match_count, chunk))
-
-            entity_candidates.sort(key=lambda item: item[0], reverse=True)
-            for score, chunk in entity_candidates[: adjacency_limit]:
-                document = documents.get(chunk.document_id)
-                if document is None:
-                    continue
-                existing[chunk.id] = self._build_expanded_candidate(
-                    chunk=chunk,
-                    document=document,
-                    score=score,
-                    retrieval="graph-entity",
-                    metadata={
-                        "entity_terms": query_entities,
-                    },
-                )
+                existing[item.chunk_id] = item
                 added += 1
 
         merged = sorted(existing.values(), key=self._effective_score, reverse=True)
         return merged, added
+
+    def _retrieve_entity_candidates(
+        self,
+        *,
+        collection_id: str,
+        query_entities: list[str],
+        limit: int,
+        weight: float,
+    ) -> list[EvidencePack]:
+        bm25_retriever = self.retrievers.get("bm25")
+        if bm25_retriever is None or not query_entities or limit <= 0:
+            return []
+
+        entity_query = " ".join(query_entities)
+        fetch_k = max(limit * 4, limit)
+        hits = bm25_retriever.retrieve(entity_query, collection_id, top_k=fetch_k)
+
+        candidates: list[EvidencePack] = []
+        for hit in hits:
+            matches = [
+                term
+                for term in query_entities
+                if contains_token(hit.snippet, term) or contains_token(hit.title, term) or contains_token(hit.source, term)
+            ]
+            if not matches:
+                continue
+
+            score = hit.score + (weight * len(matches))
+            candidates.append(
+                hit.model_copy(
+                    update={
+                        "score": score,
+                        "metadata": {
+                            **hit.metadata,
+                            "retrieval": "graph-entity",
+                            "entity_terms": query_entities,
+                            "graph_entity_matches": matches,
+                            "graph_entity_source_retrieval": hit.metadata.get("retrieval"),
+                        },
+                    }
+                )
+            )
+            if len(candidates) >= limit:
+                break
+
+        return sorted(candidates, key=self._effective_score, reverse=True)[:limit]
 
     def _build_expanded_candidate(
         self,

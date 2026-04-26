@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, select, tuple_
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.core.models import Chunk, Collection, RetrievalRunRecord, SourceDocument
@@ -283,6 +283,58 @@ class SQLiteMetadataStore:
                 for chunk_row, document_row in rows
             }
             return [record_map[chunk_id] for chunk_id in chunk_ids if chunk_id in record_map]
+
+    def get_chunk_records_by_document_indexes(
+        self,
+        collection_id: str,
+        document_indexes: dict[str, set[int]],
+    ) -> list[dict]:
+        pairs = [
+            (document_id, chunk_index)
+            for document_id, chunk_indexes in document_indexes.items()
+            for chunk_index in chunk_indexes
+        ]
+        if not pairs:
+            return []
+
+        with self.session() as session:
+            rows = (
+                session.execute(
+                    select(ChunkORM, SourceDocumentORM)
+                    .join(SourceDocumentORM, ChunkORM.document_id == SourceDocumentORM.id)
+                    .where(SourceDocumentORM.collection_id == collection_id)
+                    .where(tuple_(ChunkORM.document_id, ChunkORM.chunk_index).in_(pairs))
+                )
+                .all()
+            )
+
+            return [
+                {
+                    "chunk": Chunk(
+                        id=chunk_row.id,
+                        document_id=chunk_row.document_id,
+                        chunk_index=chunk_row.chunk_index,
+                        text=chunk_row.text,
+                        token_count=chunk_row.token_count,
+                        section_title=chunk_row.section_title,
+                        parent_span=chunk_row.parent_span,
+                        metadata=_from_json(chunk_row.metadata_json, {}),
+                    ),
+                    "document": SourceDocument(
+                        id=document_row.id,
+                        collection_id=document_row.collection_id,
+                        title=document_row.title,
+                        source_uri=document_row.source_uri,
+                        source_type=document_row.source_type,
+                        checksum=document_row.checksum,
+                        published_at=document_row.published_at,
+                        ingested_at=document_row.ingested_at,
+                        raw_text_path=document_row.raw_text_path,
+                        metadata=_from_json(document_row.metadata_json, {}),
+                    ),
+                }
+                for chunk_row, document_row in rows
+            ]
 
     def checksum_exists(self, checksum: str, collection_id: str | None = None) -> bool:
         with self.session() as session:

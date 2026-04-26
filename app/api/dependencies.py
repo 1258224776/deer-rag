@@ -34,7 +34,11 @@ def get_store() -> SQLiteMetadataStore:
 @lru_cache(maxsize=1)
 def get_index_registry() -> CollectionIndexRegistry:
     config = get_config()
-    return CollectionIndexRegistry(get_store(), base_dir=config.paths.data_dir / "indexes")
+    return CollectionIndexRegistry(
+        get_store(),
+        base_dir=config.paths.data_dir / "indexes",
+        dense_model_name=config.models.embedding_model_name,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -44,7 +48,11 @@ def get_ingestion_service() -> IngestionService:
 
 @lru_cache(maxsize=1)
 def get_dense_retriever() -> DenseRetriever:
-    return DenseRetriever(get_index_registry(), get_store())
+    return DenseRetriever(
+        get_index_registry(),
+        get_store(),
+        model_name=get_config().models.embedding_model_name,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -59,7 +67,7 @@ def get_hybrid_retriever() -> HybridRetriever:
 
 @lru_cache(maxsize=1)
 def get_reranker() -> CrossEncoderReranker:
-    return CrossEncoderReranker()
+    return CrossEncoderReranker(model_name=get_config().models.reranker_model_name)
 
 
 @lru_cache(maxsize=1)
